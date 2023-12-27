@@ -7,21 +7,23 @@ use winit::{
     window::{Window, WindowBuilder},
 };
 
-trait Entity {
-
-}
+trait Entity {}
 
 struct AppInfo {
     appname: &'static str,
 }
 
 struct Game {
-    path: PathBuf,
+    data_path: PathBuf,
+    run_path: PathBuf,
 }
 
 impl Game {
-    pub fn new(path: PathBuf) -> Self {
-        Self { path }
+    pub fn new(data_path: PathBuf, run_path: PathBuf) -> Self {
+        Self {
+            data_path,
+            run_path,
+        }
     }
 
     pub fn create_appinfo(&self) -> AppInfo {
@@ -138,9 +140,10 @@ impl Display {
 
 async fn run() {
     let args: Vec<String> = env::args().collect();
-    let game_path = PathBuf::from(&args[1]);
+    let game_data_path = PathBuf::from(&args[1]);
+    let game_run_path = PathBuf::from(&args[2]);
 
-    let game = Game::new(game_path);
+    let game = Game::new(game_data_path, game_run_path);
 
     let appinfo = game.create_appinfo();
 
