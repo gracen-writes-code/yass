@@ -1,0 +1,12 @@
+[package]
+name = "engine"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+env_logger = "0.10.1"
+log = "0.4.20"
+pollster = "0.3.0"
+ruwren = "0.4.10"
+wgpu = "0.18.0"
+winit = "0.27.5"
