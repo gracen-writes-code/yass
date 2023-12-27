@@ -2,37 +2,41 @@ use std::env;
 use std::path::PathBuf;
 
 use winit::{
-    event::{self, *},
+    event::*,
     event_loop::{ControlFlow, EventLoop},
     window::{Window, WindowBuilder},
 };
 
 trait Entity {}
 
-struct AppInfo {
-    appname: &'static str,
-}
-
 struct Game {
-    data_path: PathBuf,
-    run_path: PathBuf,
+    _data_path: PathBuf,
+    _run_path: PathBuf,
 }
 
 impl Game {
     pub fn new(data_path: PathBuf, run_path: PathBuf) -> Self {
         Self {
-            data_path,
-            run_path,
+            _data_path: data_path,
+            _run_path: run_path,
         }
     }
 
-    pub fn create_appinfo(&self) -> AppInfo {
-        todo!();
+    pub fn window_name(&self) -> String {
+        String::from("DUMMY APPLICATION NAME")
+    }
+
+    fn capture_window_event(
+        &self,
+        _window_event: &WindowEvent,
+        _control_flow: &mut ControlFlow,
+    ) -> bool {
+        false
     }
 }
 
 struct Display {
-    appinfo: AppInfo,
+    _name: String,
     surface: wgpu::Surface,
     device: wgpu::Device,
     queue: wgpu::Queue,
@@ -42,7 +46,7 @@ struct Display {
 }
 
 impl Display {
-    async fn new(window: Window, appinfo: AppInfo) -> Self {
+    async fn new(window: Window, name: String) -> Self {
         let size = window.inner_size();
 
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
@@ -97,7 +101,7 @@ impl Display {
         };
 
         Self {
-            appinfo,
+            _name: name,
             window,
             surface,
             device,
@@ -131,8 +135,33 @@ impl Display {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-                label: Some(format!("{} - Render Encoder", self.appinfo.appname).as_str()),
+                label: Some("Render Encoder"),
             });
+
+        let render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("Render Pass"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                view: &view,
+                resolve_target: None,
+                ops: wgpu::Operations {
+                    load: wgpu::LoadOp::Clear(wgpu::Color {
+                        r: 0.1,
+                        g: 0.2,
+                        b: 0.3,
+                        a: 1.0,
+                    }),
+                    store: wgpu::StoreOp::Store,
+                },
+            })],
+            depth_stencil_attachment: None,
+            occlusion_query_set: None,
+            timestamp_writes: None,
+        });
+
+        drop(render_pass);
+
+        self.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
 
         Ok(())
     }
@@ -145,34 +174,25 @@ async fn run() {
 
     let game = Game::new(game_data_path, game_run_path);
 
-    let appinfo = game.create_appinfo();
-
     env_logger::init();
     let event_loop = EventLoop::new();
     let window = WindowBuilder::new()
-        .with_title(appinfo.appname)
+        .with_title(game.window_name())
         .build(&event_loop)
         .unwrap();
 
-    let mut display = Display::new(window, appinfo).await;
+    let mut display = Display::new(window, game.window_name()).await;
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
             ref event,
             window_id,
         } if window_id == display.window().id() => {
-            if !game.capture_window_event(event) {
+            if !game.capture_window_event(event, control_flow) {
                 match event {
+                    // Close
                     WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
-                    WindowEvent::KeyboardInput {
-                        input:
-                            KeyboardInput {
-                                state: ElementState::Pressed,
-                                virtual_keycode: Some(VirtualKeyCode::Escape),
-                                ..
-                            },
-                        ..
-                    } => *control_flow = ControlFlow::Exit,
+                    // Resize
                     WindowEvent::Resized(physical_size) => {
                         display.resize(*physical_size);
                     }
@@ -183,6 +203,19 @@ async fn run() {
                 }
             }
         }
+        Event::RedrawRequested(window_id) if window_id == display.window().id() => {
+            display.update();
+            match display.render() {
+                Ok(_) => {}
+                Err(wgpu::SurfaceError::Lost) => display.resize(display.size),
+                Err(wgpu::SurfaceError::OutOfMemory) => *control_flow = ControlFlow::Exit,
+                Err(e) => eprintln!("{:?}", e),
+            }
+        }
+        Event::MainEventsCleared => {
+            display.window().request_redraw();
+        }
+        Event::LoopDestroyed => {}
         _ => {}
     });
 }
