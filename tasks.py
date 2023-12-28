@@ -8,12 +8,17 @@ import engine.tasks as engine
 def build(c: Context, profile="dev"):
     with c.cd("engine"):
         engine.build(c, profile)
-        
+
+@task
+def clean(c: Context):
+    with c.cd("engine"):
+        engine.clean(c)
+
 @task(build)
 def move_debug_bin(c: Context):
     if Path("engine.dbg").exists():
         c.run("rm engine.dbg")
-        
+
     c.run("mv engine/target/debug/engine engine.dbg")
 
 
