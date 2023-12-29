@@ -9,10 +9,12 @@ def build(c: Context, profile="dev"):
     with c.cd("engine"):
         engine.build(c, profile)
 
+
 @task
 def clean(c: Context):
     with c.cd("engine"):
         engine.clean(c)
+
 
 @task(build)
 def move_debug_bin(c: Context):
@@ -25,3 +27,8 @@ def move_debug_bin(c: Context):
 @task(build, move_debug_bin)
 def debug(c: Context):
     c.run("./engine.dbg game run", pty=True)
+
+@task
+def release(c: Context):
+    with c.cd("engine"):
+        engine.build(c, "release")
