@@ -17,27 +17,35 @@ pub enum AddRenderableError {}
 pub enum RemoveRenderableError {}
 
 pub struct Camera {
-    theta_x: f32,
-    theta_y: f32,
+    pub theta_x: f32,
+    pub theta_y: f32,
 
-    fov: f32,
-    near_cutoff: f32,
-    far_cutoff: f32,
+    pub fov: f32,
+    pub near_cutoff: f32,
+    pub far_cutoff: f32,
 
-    eye: cgmath::Point3<f32>,
-    center: cgmath::Point3<f32>,
-    up: cgmath::Vector3<f32>,
+    pub eye: cgmath::Point3<f32>,
+    pub center: cgmath::Point3<f32>,
+    pub up: cgmath::Vector3<f32>,
 
-    scale: f32,
+    pub scale: f32,
+}
+
+pub trait Renderable {
+    fn get_vertices(&self) -> Vec<cgmath::Point3<f32>>;
+    fn get_indices(&self) -> Vec<u32>;
 }
 
 pub trait GraphicsInterface {
     fn new(event_loop: &EventLoop<()>, window: Arc<Window>) -> Self;
 
-    fn add_renderable(&self, renderable: Renderable) -> Result<usize, AddRenderableError>;
-    fn rm_renderable(&self, id: usize) -> Result<(), RemoveRenderableError>;
+    fn add_renderable(
+        &mut self,
+        renderable: impl Renderable + Send,
+    ) -> Result<usize, AddRenderableError>;
+    fn rm_renderable(&mut self, id: usize) -> Result<(), RemoveRenderableError>;
 
-    fn render(&self, camera: Camera) -> Result<RenderSuccess, RenderError>;
+    fn render(&mut self, camera: Camera) -> Result<RenderSuccess, RenderError>;
 
-    fn on_resized(&self, new_size: PhysicalSize<u32>) -> Result<(), ResizeError>;
+    fn on_resized(&mut self, new_size: PhysicalSize<u32>) -> Result<(), ResizeError>;
 }

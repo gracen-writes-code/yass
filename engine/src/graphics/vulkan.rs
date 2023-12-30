@@ -1,6 +1,5 @@
 use cgmath::{Matrix3, Matrix4, Rad};
-use rayon;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use vulkano::{
     buffer::{
         allocator::{SubbufferAllocator, SubbufferAllocatorCreateInfo},
@@ -41,7 +40,7 @@ use vulkano::{
     swapchain::{
         acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
-    sync::{self, future::FenceSignalFuture, GpuFuture},
+    sync::{self, GpuFuture},
     Validated, VulkanError, VulkanLibrary,
 };
 use winit::{event_loop::EventLoop, window::Window};
@@ -85,8 +84,7 @@ pub struct VulkanGraphicsInterface {
     recreate_swapchain: bool,
 
     // Render pool
-    renderable_processing_pool: rayon::ThreadPool,
-    renderables: Mutex<Vec<Option<VulkanRenderable>>>,
+    renderables: Vec<Option<VulkanRenderable>>,
 }
 
 impl GraphicsInterface for VulkanGraphicsInterface {
@@ -150,7 +148,7 @@ impl GraphicsInterface for VulkanGraphicsInterface {
 
         let queue = queues.next().unwrap();
 
-        let (mut swapchain, images) = {
+        let (swapchain, images) = {
             let surface_capabilities = device
                 .physical_device()
                 .surface_capabilities(&surface, Default::default())
@@ -225,27 +223,18 @@ impl GraphicsInterface for VulkanGraphicsInterface {
             .entry_point("main")
             .unwrap();
 
-        let (mut pipeline, mut framebuffers) = create_pipeline_and_framebuffers(
+        let (pipeline, mut framebuffers) = create_pipeline_and_framebuffers(
             memory_allocator.clone(),
             vs.clone(),
             fs.clone(),
             &images,
             render_pass.clone(),
         );
-        let mut recreate_swapchain = false;
 
         let descriptor_set_allocator =
             StandardDescriptorSetAllocator::new(device.clone(), Default::default());
         let command_buffer_allocator =
             StandardCommandBufferAllocator::new(device.clone(), Default::default());
-
-        // TODO make thread count configurable
-        let renderable_processing_pool = rayon::ThreadPoolBuilder::new()
-            .num_threads(4)
-            .build()
-            .unwrap();
-
-        let renderables = Mutex::new(vec![]);
 
         Self {
             window,
@@ -262,44 +251,71 @@ impl GraphicsInterface for VulkanGraphicsInterface {
             vs,
             fs,
             recreate_swapchain: false,
-            renderable_processing_pool,
-            renderables,
+            renderables: vec![],
         }
     }
 
     fn add_renderable(
-        &self,
-        renderable: super::Renderable,
+        &mut self,
+        renderable: impl super::Renderable + Send,
     ) -> Result<usize, super::AddRenderableError> {
-        let index = {
-            let renderables = self.renderables.get_mut().unwrap();
-
-            match renderables.iter().position(|x| x.is_none()) {
-                Some(idx) => idx,
-                None => {
-                    renderables.push(None);
-                    renderables.len() - 1
-                }
+        let index = match self.renderables.iter().position(|x| x.is_none()) {
+            Some(idx) => idx,
+            None => {
+                self.renderables.push(None);
+                self.renderables.len() - 1
             }
         };
 
-        self.renderable_processing_pool.spawn(move || {
-            let vulkan_renderable = VulkanRenderable::from(renderable);
+        let vertex_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::VERTEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            renderable.get_vertices().iter().map(|v| Vertex {
+                position: [v.x, v.y, v.z],
+            }),
+        )
+        .unwrap();
+        let index_buffer = Buffer::from_iter(
+            self.memory_allocator.clone(),
+            BufferCreateInfo {
+                usage: BufferUsage::INDEX_BUFFER,
+                ..Default::default()
+            },
+            AllocationCreateInfo {
+                memory_type_filter: MemoryTypeFilter::PREFER_DEVICE
+                    | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                ..Default::default()
+            },
+            renderable.get_indices(),
+        )
+        .unwrap();
 
-            {
-                let renderables = self.renderables.get_mut().unwrap();
-                renderables[index] = Some(vulkan_renderable);
-            };
-        });
+        let vulkan_renderable = VulkanRenderable {
+            vertex_buffer,
+            index_buffer,
+        };
+
+        self.renderables[index] = Some(vulkan_renderable);
 
         Ok(index)
     }
 
-    fn rm_renderable(&self, id: usize) -> Result<(), super::RemoveRenderableError> {
+    fn rm_renderable(&mut self, id: usize) -> Result<(), super::RemoveRenderableError> {
         todo!()
     }
 
-    fn render(&self, camera: super::Camera) -> Result<super::RenderSuccess, super::RenderError> {
+    fn render(
+        &mut self,
+        camera: super::Camera,
+    ) -> Result<super::RenderSuccess, super::RenderError> {
         let image_extent: [u32; 2] = self.window.inner_size().into();
 
         if image_extent.contains(&0) {
@@ -407,26 +423,22 @@ impl GraphicsInterface for VulkanGraphicsInterface {
             )
             .unwrap();
 
-        {
-            let renderables = self.renderables.lock().unwrap();
-
-            for renderable in renderables.iter() {
-                match renderable {
-                    Some(renderable) => {
-                        command_buffer_builder = command_buffer_builder
-                            .bind_vertex_buffers(0, renderable.vertex_buffer.clone())
-                            .unwrap()
-                            .bind_index_buffer(renderable.index_buffer.clone())
-                            .unwrap()
-                            .draw_indexed(renderable.index_buffer.len() as u32, 1, 0, 0, 0)
-                            .unwrap();
-                    }
-                    _ => {}
+        for renderable in &self.renderables {
+            match renderable {
+                Some(renderable) => {
+                    command_buffer_builder = command_buffer_builder
+                        .bind_vertex_buffers(0, renderable.vertex_buffer.clone())
+                        .unwrap()
+                        .bind_index_buffer(renderable.index_buffer.clone())
+                        .unwrap()
+                        .draw_indexed(renderable.index_buffer.len() as u32, 1, 0, 0, 0)
+                        .unwrap();
                 }
+                _ => {}
             }
         }
 
-        command_buffer_builder = command_buffer_builder
+        command_buffer_builder
             .end_render_pass(Default::default())
             .unwrap();
 
@@ -458,8 +470,8 @@ impl GraphicsInterface for VulkanGraphicsInterface {
     }
 
     fn on_resized(
-        &self,
-        new_size: winit::dpi::PhysicalSize<u32>,
+        &mut self,
+        _new_size: winit::dpi::PhysicalSize<u32>,
     ) -> Result<(), super::ResizeError> {
         self.recreate_swapchain = true;
         Ok(())
@@ -569,7 +581,6 @@ mod vertex_shader {
             #version 450
 
             layout(location = 0) in vec3 position;
-            layout(location = 1) in vec3 normal;
 
             layout(set = 0, binding = 0) uniform Data {
                 mat4 world;
