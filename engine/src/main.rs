@@ -1,20 +1,37 @@
 mod graphics;
 
 use std::sync::Arc;
+use std::time;
 use winit::{
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoop},
     window::WindowBuilder,
 };
 
-use crate::graphics::{vulkan::VulkanGraphicsInterface, GraphicsInterface, Renderable};
+use crate::graphics::{vulkan::VulkanGraphicsInterface, GraphicsInterface, Renderable, Vertex};
 
-struct Triangle {
-    vertices: [cgmath::Point3<f32>; 3],
+#[derive(Clone)]
+struct StaticVertex {
+    point: cgmath::Point3<f32>,
+    tex_coords: cgmath::Point2<f32>,
 }
 
-impl Renderable for Triangle {
-    fn get_vertices(&self) -> Vec<cgmath::Point3<f32>> {
+impl Vertex for StaticVertex {
+    fn get_point(&self) -> cgmath::Point3<f32> {
+        self.point
+    }
+
+    fn get_tex_coords(&self) -> cgmath::Point2<f32> {
+        self.tex_coords
+    }
+}
+
+struct Triangle {
+    vertices: [StaticVertex; 3],
+}
+
+impl Renderable<StaticVertex> for Triangle {
+    fn get_vertices(&self) -> Vec<StaticVertex> {
         self.vertices.to_vec()
     }
 
@@ -27,15 +44,31 @@ fn main() {
     let event_loop = EventLoop::new();
     let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
-    let mut graphics_interface = VulkanGraphicsInterface::new(&event_loop, window.clone());
+    let mut graphics_interface = VulkanGraphicsInterface::new(
+        &event_loop,
+        window.clone(),
+        image::open("texture.png").unwrap(),
+    );
 
     graphics_interface.add_renderable(Triangle {
         vertices: [
-            cgmath::point3(1.0, 1.0, 2.0),
-            cgmath::point3(-1.0, -1.0, 2.0),
-            cgmath::point3(1.0, -1.0, 2.0),
+            StaticVertex {
+                point: cgmath::point3(0.0, 1.0, 2.0),
+                tex_coords: cgmath::point2(0.5, 0.0),
+            },
+            StaticVertex {
+                point: cgmath::point3(-1.0, -1.0, 2.0),
+                tex_coords: cgmath::point2(0.0, 1.0),
+            },
+            StaticVertex {
+                point: cgmath::point3(1.0, -1.0, 2.0),
+                tex_coords: cgmath::point2(1.0, 1.0),
+            },
         ],
     });
+
+    let mut last_render = time::Instant::now();
+    let mut rotation = 0f32;
 
     event_loop.run(move |event, _, control_flow| match event {
         Event::WindowEvent {
@@ -49,9 +82,11 @@ fn main() {
             _ => {}
         },
         Event::MainEventsCleared => {
+            rotation += 10f32 * last_render.elapsed().as_secs_f32();
+            last_render = time::Instant::now();
             graphics_interface.render(graphics::Camera {
                 theta_x: 0.0,
-                theta_y: 30.0f32.to_radians(),
+                theta_y: rotation.to_radians(),
                 fov: 70.0f32.to_radians(),
                 near_cutoff: 0.01,
                 far_cutoff: 100.0,

@@ -1,4 +1,5 @@
 use cgmath::{Matrix3, Matrix4, Rad};
+use image::EncodableLayout;
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -7,7 +8,7 @@ use vulkano::{
     },
     command_buffer::{
         allocator::StandardCommandBufferAllocator, AutoCommandBufferBuilder, CommandBufferUsage,
-        RenderPassBeginInfo,
+        CopyBufferToImageInfo, PrimaryCommandBufferAbstract, RenderPassBeginInfo,
     },
     descriptor_set::{
         allocator::StandardDescriptorSetAllocator, PersistentDescriptorSet, WriteDescriptorSet,
@@ -17,7 +18,11 @@ use vulkano::{
         Queue, QueueCreateInfo, QueueFlags,
     },
     format::Format,
-    image::{view::ImageView, Image, ImageCreateInfo, ImageType, ImageUsage},
+    image::{
+        sampler::{Filter, Sampler, SamplerAddressMode, SamplerCreateInfo},
+        view::ImageView,
+        Image, ImageCreateInfo, ImageType, ImageUsage,
+    },
     instance::{Instance, InstanceCreateFlags, InstanceCreateInfo},
     memory::allocator::{AllocationCreateInfo, MemoryTypeFilter, StandardMemoryAllocator},
     pipeline::{
@@ -26,7 +31,7 @@ use vulkano::{
             depth_stencil::{DepthState, DepthStencilState},
             input_assembly::InputAssemblyState,
             multisample::MultisampleState,
-            rasterization::RasterizationState,
+            rasterization::{CullMode, FrontFace, RasterizationState},
             vertex_input::{Vertex as VertexTrait, VertexDefinition},
             viewport::{Viewport, ViewportState},
             GraphicsPipelineCreateInfo,
@@ -41,7 +46,7 @@ use vulkano::{
         acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
     sync::{self, GpuFuture},
-    Validated, VulkanError, VulkanLibrary,
+    DeviceSize, Validated, VulkanError, VulkanLibrary,
 };
 use winit::{event_loop::EventLoop, window::Window};
 
@@ -52,6 +57,8 @@ use crate::graphics::GraphicsInterface;
 struct Vertex {
     #[format(R32G32B32_SFLOAT)]
     position: [f32; 3],
+    #[format(R32G32_SFLOAT)]
+    in_tex_coords: [f32; 2],
 }
 
 struct VulkanRenderable {
@@ -80,6 +87,10 @@ pub struct VulkanGraphicsInterface {
     vs: EntryPoint,
     fs: EntryPoint,
 
+    // Texture
+    sampler: Arc<Sampler>,
+    texture: Arc<ImageView>,
+
     // Render state
     recreate_swapchain: bool,
 
@@ -88,7 +99,11 @@ pub struct VulkanGraphicsInterface {
 }
 
 impl GraphicsInterface for VulkanGraphicsInterface {
-    fn new(event_loop: &EventLoop<()>, window: Arc<Window>) -> Self {
+    fn new(
+        event_loop: &EventLoop<()>,
+        window: Arc<Window>,
+        texture_image: image::DynamicImage,
+    ) -> Self {
         let library = VulkanLibrary::new().unwrap();
         let required_extensions = Surface::required_extensions(&event_loop);
 
@@ -180,6 +195,10 @@ impl GraphicsInterface for VulkanGraphicsInterface {
         };
 
         let memory_allocator = Arc::new(StandardMemoryAllocator::new_default(device.clone()));
+        let descriptor_set_allocator =
+            StandardDescriptorSetAllocator::new(device.clone(), Default::default());
+        let command_buffer_allocator =
+            StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
         let uniform_buffer = SubbufferAllocator::new(
             memory_allocator.clone(),
@@ -223,6 +242,72 @@ impl GraphicsInterface for VulkanGraphicsInterface {
             .entry_point("main")
             .unwrap();
 
+        let mut uploads = AutoCommandBufferBuilder::primary(
+            &command_buffer_allocator,
+            queue.queue_family_index(),
+            CommandBufferUsage::OneTimeSubmit,
+        )
+        .unwrap();
+
+        let texture = {
+            let extent = [texture_image.width(), texture_image.height(), 1];
+
+            let upload_buffer = Buffer::from_iter(
+                memory_allocator.clone(),
+                BufferCreateInfo {
+                    usage: BufferUsage::TRANSFER_SRC,
+                    ..Default::default()
+                },
+                AllocationCreateInfo {
+                    memory_type_filter: MemoryTypeFilter::PREFER_HOST
+                        | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
+                    ..Default::default()
+                },
+                texture_image.into_rgba8().into_vec(),
+            )
+            .unwrap();
+
+            let image = Image::new(
+                memory_allocator.clone(),
+                ImageCreateInfo {
+                    image_type: ImageType::Dim2d,
+                    format: Format::R8G8B8A8_SRGB,
+                    extent,
+                    usage: ImageUsage::TRANSFER_DST | ImageUsage::SAMPLED,
+                    ..Default::default()
+                },
+                AllocationCreateInfo::default(),
+            )
+            .unwrap();
+
+            uploads
+                .copy_buffer_to_image(CopyBufferToImageInfo::buffer_image(
+                    upload_buffer,
+                    image.clone(),
+                ))
+                .unwrap();
+
+            ImageView::new_default(image).unwrap()
+        };
+
+        uploads
+            .build()
+            .unwrap()
+            .execute(queue.clone())
+            .unwrap()
+            .boxed();
+
+        let sampler = Sampler::new(
+            device.clone(),
+            SamplerCreateInfo {
+                mag_filter: Filter::Linear,
+                min_filter: Filter::Linear,
+                address_mode: [SamplerAddressMode::Repeat; 3],
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
         let (pipeline, mut framebuffers) = create_pipeline_and_framebuffers(
             memory_allocator.clone(),
             vs.clone(),
@@ -230,11 +315,6 @@ impl GraphicsInterface for VulkanGraphicsInterface {
             &images,
             render_pass.clone(),
         );
-
-        let descriptor_set_allocator =
-            StandardDescriptorSetAllocator::new(device.clone(), Default::default());
-        let command_buffer_allocator =
-            StandardCommandBufferAllocator::new(device.clone(), Default::default());
 
         Self {
             window,
@@ -250,14 +330,16 @@ impl GraphicsInterface for VulkanGraphicsInterface {
             command_buffer_allocator,
             vs,
             fs,
+            sampler,
+            texture,
             recreate_swapchain: false,
             renderables: vec![],
         }
     }
 
-    fn add_renderable(
+    fn add_renderable<V: super::Vertex>(
         &mut self,
-        renderable: impl super::Renderable + Send,
+        renderable: impl super::Renderable<V> + Send,
     ) -> Result<usize, super::AddRenderableError> {
         let index = match self.renderables.iter().position(|x| x.is_none()) {
             Some(idx) => idx,
@@ -278,8 +360,14 @@ impl GraphicsInterface for VulkanGraphicsInterface {
                     | MemoryTypeFilter::HOST_SEQUENTIAL_WRITE,
                 ..Default::default()
             },
-            renderable.get_vertices().iter().map(|v| Vertex {
-                position: [v.x, v.y, v.z],
+            renderable.get_vertices().iter().map(|v| {
+                let point = v.get_point();
+                let tex_coords = v.get_tex_coords();
+
+                Vertex {
+                    position: [point.x, point.y, point.z],
+                    in_tex_coords: [tex_coords.x, tex_coords.y],
+                }
             }),
         )
         .unwrap();
@@ -372,11 +460,20 @@ impl GraphicsInterface for VulkanGraphicsInterface {
             subbuffer
         };
 
-        let layout = self.pipeline.layout().set_layouts().get(0).unwrap();
-        let set = PersistentDescriptorSet::new(
+        let uniform_set = PersistentDescriptorSet::new(
             &self.descriptor_set_allocator,
-            layout.clone(),
+            self.pipeline.layout().set_layouts().get(0).unwrap().clone(),
             [WriteDescriptorSet::buffer(0, uniform_buffer_subbuffer)],
+            [],
+        )
+        .unwrap();
+        let texture_set = PersistentDescriptorSet::new(
+            &self.descriptor_set_allocator,
+            self.pipeline.layout().set_layouts().get(1).unwrap().clone(),
+            [
+                WriteDescriptorSet::sampler(0, self.sampler.clone()),
+                WriteDescriptorSet::image_view(1, self.texture.clone()),
+            ],
             [],
         )
         .unwrap();
@@ -419,7 +516,7 @@ impl GraphicsInterface for VulkanGraphicsInterface {
                 PipelineBindPoint::Graphics,
                 self.pipeline.layout().clone(),
                 0,
-                set,
+                vec![uniform_set.clone(), texture_set.clone()],
             )
             .unwrap();
 
@@ -554,7 +651,11 @@ fn create_pipeline_and_framebuffers(
                     .collect(),
                     ..Default::default()
                 }),
-                rasterization_state: Some(RasterizationState::default()),
+                rasterization_state: Some(RasterizationState {
+                    cull_mode: CullMode::Back,
+                    front_face: FrontFace::CounterClockwise,
+                    ..Default::default()
+                }),
                 depth_stencil_state: Some(DepthStencilState {
                     depth: Some(DepthState::simple()),
                     ..Default::default()
@@ -581,6 +682,8 @@ mod vertex_shader {
             #version 450
 
             layout(location = 0) in vec3 position;
+            layout(location = 1) in vec2 in_tex_coords;
+            layout(location = 0) out vec2 tex_coords;
 
             layout(set = 0, binding = 0) uniform Data {
                 mat4 world;
@@ -591,6 +694,7 @@ mod vertex_shader {
             void main() {
                 mat4 worldview = uniforms.view * uniforms.world;
                 gl_Position = uniforms.proj * worldview * vec4(position, 1.0);
+                tex_coords = in_tex_coords;
             }
         ",
     }
@@ -601,11 +705,15 @@ mod fragment_shader {
         ty: "fragment",
         src: r"
             #version 450
-
+            
+            layout(location = 0) in vec2 tex_coords;
             layout(location = 0) out vec4 f_color;
 
+            layout(set = 1, binding = 0) uniform sampler s;
+            layout(set = 1, binding = 1) uniform texture2D tex;
+
             void main() {
-                f_color = vec4(1.0, 0.0, 0.0, 1.0);
+                f_color = texture(sampler2D(tex, s), tex_coords);
             }
         "
     }

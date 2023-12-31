@@ -31,17 +31,22 @@ pub struct Camera {
     pub scale: f32,
 }
 
-pub trait Renderable {
-    fn get_vertices(&self) -> Vec<cgmath::Point3<f32>>;
+pub trait Vertex {
+    fn get_point(&self) -> cgmath::Point3<f32>;
+    fn get_tex_coords(&self) -> cgmath::Point2<f32>;
+}
+
+pub trait Renderable<V: Vertex> {
+    fn get_vertices(&self) -> Vec<V>;
     fn get_indices(&self) -> Vec<u32>;
 }
 
 pub trait GraphicsInterface {
-    fn new(event_loop: &EventLoop<()>, window: Arc<Window>) -> Self;
+    fn new(event_loop: &EventLoop<()>, window: Arc<Window>, texture: image::DynamicImage) -> Self;
 
-    fn add_renderable(
+    fn add_renderable<V: Vertex>(
         &mut self,
-        renderable: impl Renderable + Send,
+        renderable: impl Renderable<V> + Send,
     ) -> Result<usize, AddRenderableError>;
     fn rm_renderable(&mut self, id: usize) -> Result<(), RemoveRenderableError>;
 
