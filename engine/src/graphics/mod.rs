@@ -3,19 +3,6 @@ pub mod vulkan;
 use std::sync::Arc;
 use winit::{dpi::PhysicalSize, event_loop::EventLoop, window::Window};
 
-pub enum RenderSuccess {
-    Rendered,
-
-    RenderImpossible,
-}
-pub enum RenderError {}
-
-pub enum ResizeError {}
-
-pub enum AddRenderableError {}
-
-pub enum RemoveRenderableError {}
-
 pub struct Camera {
     pub theta_x: f32,
     pub theta_y: f32,
@@ -44,13 +31,10 @@ pub trait Renderable<V: Vertex> {
 pub trait GraphicsInterface {
     fn new(event_loop: &EventLoop<()>, window: Arc<Window>, texture: image::DynamicImage) -> Self;
 
-    fn add_renderable<V: Vertex>(
-        &mut self,
-        renderable: impl Renderable<V> + Send,
-    ) -> Result<usize, AddRenderableError>;
-    fn rm_renderable(&mut self, id: usize) -> Result<(), RemoveRenderableError>;
+    fn add_renderable<V: Vertex>(&mut self, renderable: impl Renderable<V> + Send) -> usize;
+    fn rm_renderable(&mut self, id: usize);
 
-    fn render(&mut self, camera: Camera) -> Result<RenderSuccess, RenderError>;
+    fn render(&mut self, camera: Camera);
 
-    fn on_resized(&mut self, new_size: PhysicalSize<u32>) -> Result<(), ResizeError>;
+    fn on_resized(&mut self, new_size: PhysicalSize<u32>);
 }

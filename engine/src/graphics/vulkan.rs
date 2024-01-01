@@ -1,5 +1,4 @@
 use cgmath::{Matrix3, Matrix4, Rad};
-use image::EncodableLayout;
 use std::sync::Arc;
 use vulkano::{
     buffer::{
@@ -46,7 +45,7 @@ use vulkano::{
         acquire_next_image, Surface, Swapchain, SwapchainCreateInfo, SwapchainPresentInfo,
     },
     sync::{self, GpuFuture},
-    DeviceSize, Validated, VulkanError, VulkanLibrary,
+    Validated, VulkanError, VulkanLibrary,
 };
 use winit::{event_loop::EventLoop, window::Window};
 
@@ -308,7 +307,7 @@ impl GraphicsInterface for VulkanGraphicsInterface {
         )
         .unwrap();
 
-        let (pipeline, mut framebuffers) = create_pipeline_and_framebuffers(
+        let (pipeline, framebuffers) = create_pipeline_and_framebuffers(
             memory_allocator.clone(),
             vs.clone(),
             fs.clone(),
@@ -340,7 +339,7 @@ impl GraphicsInterface for VulkanGraphicsInterface {
     fn add_renderable<V: super::Vertex>(
         &mut self,
         renderable: impl super::Renderable<V> + Send,
-    ) -> Result<usize, super::AddRenderableError> {
+    ) -> usize {
         let index = match self.renderables.iter().position(|x| x.is_none()) {
             Some(idx) => idx,
             None => {
@@ -393,21 +392,18 @@ impl GraphicsInterface for VulkanGraphicsInterface {
 
         self.renderables[index] = Some(vulkan_renderable);
 
-        Ok(index)
+        index
     }
 
-    fn rm_renderable(&mut self, id: usize) -> Result<(), super::RemoveRenderableError> {
+    fn rm_renderable(&mut self, _id: usize) {
         todo!()
     }
 
-    fn render(
-        &mut self,
-        camera: super::Camera,
-    ) -> Result<super::RenderSuccess, super::RenderError> {
+    fn render(&mut self, camera: super::Camera) {
         let image_extent: [u32; 2] = self.window.inner_size().into();
 
         if image_extent.contains(&0) {
-            return Ok(super::RenderSuccess::RenderImpossible);
+            return;
         }
 
         if self.recreate_swapchain {
@@ -483,7 +479,7 @@ impl GraphicsInterface for VulkanGraphicsInterface {
                 Ok(r) => r,
                 Err(VulkanError::OutOfDate) => {
                     self.recreate_swapchain = true;
-                    return Ok(super::RenderSuccess::RenderImpossible);
+                    return;
                 }
                 Err(e) => panic!("failed to acquire next image: {e}"),
             };
@@ -562,16 +558,10 @@ impl GraphicsInterface for VulkanGraphicsInterface {
                 println!("failed to flush future: {e}");
             }
         }
-
-        Ok(super::RenderSuccess::Rendered)
     }
 
-    fn on_resized(
-        &mut self,
-        _new_size: winit::dpi::PhysicalSize<u32>,
-    ) -> Result<(), super::ResizeError> {
+    fn on_resized(&mut self, _new_size: winit::dpi::PhysicalSize<u32>) {
         self.recreate_swapchain = true;
-        Ok(())
     }
 }
 

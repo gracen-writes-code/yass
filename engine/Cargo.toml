@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 cgmath = "0.18.0"
+clap = "4.4.12"
 image = "0.24.7"
 rayon = "1.8.0"
 ruwren = "0.4.10"
@@ -12,6 +13,7 @@ texture_packer = "0.27.0"
 vulkano = "0.34.1"
 vulkano-shaders = "0.34.0"
 winit = "0.28"
+yaml-rust = "0.4.5"
 
 [profile.dev]
 opt-level = 1

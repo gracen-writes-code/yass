@@ -1,3 +1,4 @@
+mod game;
 mod graphics;
 
 use std::sync::Arc;
@@ -40,7 +41,7 @@ impl Renderable<StaticVertex> for Triangle {
     }
 }
 
-fn main() {
+fn main_graphics() {
     let event_loop = EventLoop::new();
     let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
 
@@ -98,4 +99,8 @@ fn main() {
         }
         _ => {}
     });
+}
+
+fn main() {
+    
 }
