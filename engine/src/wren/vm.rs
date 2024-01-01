@@ -5,7 +5,7 @@ impl super::VM {
         todo!() // wrenNewVM
     }
 
-    pub fn interpret(&self, module: Option<&str>, source: &str) -> Result<(), InterpretError> {
+    pub fn interpret(&self, module: Option<&[u8]>, source: &[u8]) -> Result<(), InterpretError> {
         let closure = self.compile_source(module, source, false, true);
         if closure.is_none() {
             return Err(InterpretError::CompileError);
@@ -21,8 +21,8 @@ impl super::VM {
 
     pub fn compile_source(
         &self,
-        module: Option<&str>,
-        source: &str,
+        module: Option<&[u8]>,
+        source: &[u8],
         is_expression: bool,
         print_errors: bool,
     ) -> Option<ObjClosure> {
@@ -44,7 +44,7 @@ impl super::VM {
     pub fn compile_in_module(
         &self,
         name: Option<Value>,
-        source: &str,
+        source: &[u8],
         is_expression: bool,
         print_errors: bool,
     ) -> Option<ObjClosure> {

@@ -133,7 +133,7 @@ fn main() {
     let module = "main";
     let script = "System.print(\"I am running in a VM!\")";
 
-    let result = vm.interpret(Some(module), script);
+    let result = vm.interpret(Some(module.as_bytes()), script.as_bytes());
 
     match result {
         Ok(()) => {
