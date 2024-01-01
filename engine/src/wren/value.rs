@@ -1,0 +1,1 @@
+pub(super) type Value = u64;

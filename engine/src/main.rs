@@ -1,5 +1,6 @@
 mod game;
 mod graphics;
+mod wren;
 
 use std::sync::Arc;
 use std::time;
@@ -102,5 +103,51 @@ fn main_graphics() {
 }
 
 fn main() {
-    
+    let write_fn = |_vm: &wren::VM, text: &str| {
+        print!("{}", text);
+    };
+
+    let error_fn =
+        |_vm: &wren::VM, error_type: wren::ErrorType, module: &str, line: i32, msg: &str| {
+            match error_type {
+                wren::ErrorType::WrenErrorCompile => {
+                    println!("[{module} line {line}] [Error] {msg}");
+                }
+                wren::ErrorType::WrenErrorStackTrace => {
+                    println!("[{module} line {line}] in {msg}");
+                }
+                wren::ErrorType::WrenErrorRuntime => {
+                    println!("[Runtime Error] {msg}");
+                }
+            }
+        };
+
+    let config = wren::Configuration {
+        write_fn,
+        error_fn,
+        ..Default::default()
+    };
+
+    let vm = wren::VM::new(&config);
+
+    let module = "main";
+    let script = "System.print(\"I am running in a VM!\")";
+
+    let result = vm.interpret(Some(module), script);
+
+    match result {
+        Ok(()) => {
+            println!("Success!");
+        }
+        Err(e) => match e {
+            wren::InterpretError::CompileError => {
+                println!("Compile Error!");
+            }
+            wren::InterpretError::RuntimeError => {
+                println!("Runtime Error!");
+            }
+        },
+    };
+
+    drop(vm);
 }
