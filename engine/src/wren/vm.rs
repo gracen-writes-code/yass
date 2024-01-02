@@ -1,25 +1,7 @@
 use super::{value, value::Value, Configuration, InterpretError};
 
 impl super::VM {
-    pub fn new(config: &Configuration) -> Self {
-        todo!() // wrenNewVM
-    }
-
-    pub fn interpret(&self, module: Option<&[u8]>, source: &[u8]) -> Result<(), InterpretError> {
-        let closure = self.compile_source(module, source, false, true);
-        if closure.is_none() {
-            return Err(InterpretError::CompileError);
-        }
-
-        self.push_root(closure);
-        let fiber = self.new_fiber(closure);
-        self.pop_root();
-        self.api_stack = None;
-
-        self.run_interpreter(fiber)
-    }
-
-    pub fn compile_source(
+    pub(super) fn compile_source(
         &self,
         module: Option<&[u8]>,
         source: &[u8],
@@ -41,7 +23,7 @@ impl super::VM {
         closure
     }
 
-    pub fn compile_in_module(
+    pub(super) fn compile_in_module(
         &self,
         name: Option<Value>,
         source: &[u8],
@@ -82,11 +64,12 @@ impl super::VM {
         }
     }
 
-    pub fn push_root(&self, obj: &Obj) {
-        todo!() // wrenPushRoot
+    pub(super) fn push_root(&self, obj: Option<&Obj>) {
+        self.num_temp_roots += 1;
+        self.temp_roots[self.num_temp_roots] = obj.unwrap();
     }
 
-    pub fn pop_root(&self) {
+    pub(super) fn pop_root(&self) {
         todo!() // wrepPopRoot
     }
 }

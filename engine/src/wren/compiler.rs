@@ -1,6 +1,4 @@
-use std::any::Any;
-
-use super::{value, value::Value, VM};
+use super::{utils, value, value::Value, ErrorType, VM};
 
 const MAX_INTERPOLATION_NESTING: usize = 8;
 
@@ -141,6 +139,14 @@ impl Parser<'_> {
         self.source[self.current_char]
     }
 
+    fn peek_next_char(&self) -> u8 {
+        if self.peek_char() == b'\0' {
+            b'0'
+        } else {
+            self.source[self.current_char + 1]
+        }
+    }
+
     fn next_char(&self) -> u8 {
         let c = self.peek_char();
         self.current_char += 1;
@@ -149,6 +155,15 @@ impl Parser<'_> {
         }
 
         c
+    }
+
+    fn match_char(&self, c: u8) -> bool {
+        if self.peek_char() != c {
+            false
+        } else {
+            self.next_char();
+            true
+        }
     }
 
     fn make_token(&self, tok_type: TokenType) {
@@ -160,6 +175,201 @@ impl Parser<'_> {
         if matches!(tok_type, TokenType::Line) {
             self.next.line -= 1;
         }
+    }
+
+    fn two_char_token(&self, c: u8, two: TokenType, one: TokenType) {
+        self.make_token(if self.match_char(c) { two } else { one })
+    }
+
+    fn skip_line_comment(&self) {
+        while self.peek_char() != b'\n' && self.peek_char() != b'\0' {
+            self.next_char();
+        }
+    }
+
+    fn skip_block_comment(&self) {
+        let mut nesting = 1;
+        while nesting > 0 {
+            if self.peek_char() == b'\0' {
+                self.lex_error("Unterminated block comment.");
+                return;
+            }
+
+            if self.peek_char() == b'/' && self.peek_next_char() == b'*' {
+                self.next_char();
+                self.next_char();
+                nesting += 1;
+                continue;
+            }
+
+            if self.peek_char() == b'*' && self.peek_next_char() == b'/' {
+                self.next_char();
+                self.next_char();
+                nesting -= 1;
+                continue;
+            }
+
+            self.next_char();
+        }
+    }
+
+    fn read_raw_string(&self) {
+        let tok_type = TokenType::String;
+        let string = utils::Buffer::<u8>::new();
+
+        self.next_char();
+        self.next_char();
+
+        let mut skip_start = 0;
+        let mut first_newline = -1;
+
+        let mut skip_end = -1;
+        let mut last_newline = -1;
+
+        loop {
+            let c = self.next_char();
+            let c1 = self.peek_char();
+            let c2 = self.peek_next_char();
+
+            if c == b'\r' {
+                continue;
+            }
+
+            if c == b'\n' {
+                last_newline = string.count;
+                skip_end = last_newline;
+                first_newline = if first_newline == -1 {
+                    string.count
+                } else {
+                    first_newline
+                };
+            }
+
+            if c == b'"' && c1 == b'"' && c2 == b'"' {
+                break;
+            }
+
+            let is_whitespace = c == b' ' || c == b'\t';
+            skip_end = if c == b'\n' || is_whitespace {
+                skip_end
+            } else {
+                -1
+            };
+
+            let skippable = skip_start != 1 && is_whitespace && first_newline == -1;
+            skip_start = if skippable {
+                string.count + 1
+            } else {
+                skip_start
+            };
+
+            if first_newline == -1 && !is_whitespace && c != b'\n' {
+                skip_start = -1;
+            }
+
+            if c == b'\0' || c1 == b'\0' || c2 == b'\0' {
+                self.lex_error("Unterminated raw string.");
+
+                self.current_char -= 1;
+                break;
+            }
+
+            string.write(self.vm, c);
+        }
+
+        self.next_char();
+        self.next_char();
+
+        let mut offset = 0;
+        let mut count = string.count;
+
+        if first_newline != -1 && skip_start == first_newline {
+            offset = first_newline + 1;
+        }
+        if last_newline != -1 && skip_end == last_newline {
+            count = last_newline;
+        }
+
+        count -= if offset > count { count } else { offset };
+
+        self.next.value = self
+            .vm
+            .new_string_length(string.data.unwrap()[(count as usize)..], count);
+
+        string.clear(self.vm);
+        self.make_token(tok_type);
+    }
+
+    fn read_string(&self) {
+        let tok_type = TokenType::String;
+        let string = utils::Buffer::<u8>::new();
+
+        loop {
+            let c = self.next_char();
+            if c == b'"' {
+                break;
+            }
+            if c == b'\r' {
+                continue;
+            }
+
+            if c == b'\0' {
+                self.lex_error("Unterminated string.");
+
+                self.current_char -= 1;
+                break;
+            }
+
+            if c == b'%' {
+                if self.num_parens < MAX_INTERPOLATION_NESTING {
+                    if self.next_char() != b'(' {
+                        self.lex_error("Expect '(' after '%'.");
+                    }
+
+                    self.num_parens += 1;
+                    self.parens[self.num_parens] = 1;
+                    tok_type = TokenType::Interpolation;
+                    break;
+                }
+
+                self.lex_error(format!(
+                    "Interpolation may only nest {MAX_INTERPOLATION_NESTING} levels deep."
+                ));
+            }
+
+            if c == b'\\' {
+                match self.next_char() {
+                    b'"' => string.write(self.vm, b'"'),
+                    b'\\' => string.write(self.vm, b'\\'),
+                    b'%' => string.write(self.vm, b'%'),
+                    b'0' => string.write(self.vm, b'\0'),
+                    b'a' => string.write(self.vm, b'\x07'),
+                    b'b' => string.write(self.vm, b'\x08'),
+                    b'e' => string.write(self.vm, b'\x1B'),
+                    b'f' => string.write(self.vm, b'\x0C'),
+                    b'n' => string.write(self.vm, b'\n'),
+                    b'r' => string.write(self.vm, b'\r'),
+                    b't' => string.write(self.vm, b'\t'),
+                    b'u' => self.read_unicode_escape(&string, 4),
+                    b'U' => self.read_unicode_escape(&string, 8),
+                    b'v' => string.write(self.vm, b'\x0B'),
+                    b'x' => string.write(self.vm, self.read_hex_escape(2, "byte") as u8),
+                    invalid_byte => {
+                        let invalid_char = invalid_byte as char;
+                        self.lex_error(format!("Invalid escape character '{invalid_char}'"));
+                    }
+                }
+            } else {
+                string.write(self.vm, c);
+            }
+        }
+
+        self.next.value = self
+            .vm
+            .new_string_length(string.data.unwrap(), string.count);
+
+        string.clear(self.vm);
+        self.make_token(tok_type);
     }
 
     fn next_token(&self) {
@@ -317,6 +527,32 @@ impl Parser<'_> {
 
         self.token_start = self.current_char;
         self.make_token(TokenType::EOF);
+    }
+
+    fn print_error(&self, line: i32, label: String, msg: String) {
+        self.has_error = true;
+        if !self.print_errors {
+            return;
+        }
+
+        if self.vm.config.error_fn.is_none() {
+            return;
+        }
+
+        let module = self.module.name;
+        let module_name = if module { module.value } else { "<unknown>" }; // TODO make the if condition here real
+
+        self.vm.config.error_fn.unwrap()(
+            self.vm,
+            ErrorType::WrenErrorCompile,
+            module_name,
+            line,
+            format!("{label}: {msg}"),
+        );
+    }
+
+    fn lex_error<S: Into<String>>(&self, msg: S) {
+        self.print_error(self.current_line, "Error".into(), msg.into());
     }
 }
 
