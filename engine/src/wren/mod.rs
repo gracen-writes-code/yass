@@ -15,6 +15,20 @@ pub enum InterpretError {
     RuntimeError,
 }
 
+pub enum WrenType {
+    Bool,
+    Num,
+    Foreign,
+    List,
+    Map,
+    Null,
+    String,
+
+    Unknown,
+}
+
+type InterpretResult = Option<(), InterpretError>;
+
 pub struct Configuration {
     pub reallocate_fn: Option<ReallocateFn>, // TODO this should not be needed, investigate when i get around to GC shit
     pub resolve_module_fn: Option<ResolveModuleFn>,
@@ -55,7 +69,11 @@ impl VM {
         todo!() // wrenNewVM
     }
 
-    pub fn interpret(&self, module: Option<&[u8]>, source: &[u8]) -> Result<(), InterpretError> {
+    pub fn collect_garbage(&self) {
+        todo!(); // wrenCollectGarbage
+    }
+
+    pub fn interpret(&self, module: Option<&[u8]>, source: &[u8]) -> InterpretResult {
         let closure = self.compile_source(module, source, false, true);
         if closure.is_none() {
             return Err(InterpretError::CompileError);
@@ -68,4 +86,54 @@ impl VM {
 
         self.run_interpreter(fiber)
     }
+
+    pub fn make_call_handle(&self, signature: &[u8]) -> Handle {
+        todo!() // wrenMakeCallHandle
+    }
+
+    pub fn call(&self, method: &Handle) -> InterpretResult {
+        todo!() // wrenCall
+    }
+
+    pub fn release_handle(&self, handle: &Handle) {
+        todo!(); // wrenReleaseHandle
+    }
+
+    pub fn get_slot_count(&self) -> i32 {
+        todo!() // wrenGetSlotCount
+    }
+
+    pub fn ensure_slots(&self, num_slots: i32) -> Result<(), EnsureSlotsError> {
+        todo!(); // wrenEnsureSlots
+    }
+
+    pub fn get_slot_type(&self, slot: i32) -> WrenType {
+        todo!() // wrenGetSlotType
+    }
+
+    pub fn get_slot_bool(&self, slot: i32) -> Result<bool, GetSlotError> {
+        todo!() // wrenGetSlotBool
+    }
+
+    pub fn get_slot_bytes(&self, slot: i32) -> Result<(&[u8], usize), GetSlotError> {
+        todo!() // wrenGetSlotBytes
+    }
+
+    pub fn get_slot_double(&self, slot: i32) -> Result<f64, GetSlotError> {
+        todo!() // wrenGetSlotDouble
+    }
+
+    // TODO figure out how to implement wrenGetSlotForeign without void*
+
+    // TODO add stubs for everything past wrenGetSlotForeign
+}
+
+impl Drop for VM {
+    fn drop(&mut self) {
+        todo!(); // wrenFreeVM, may be unnecessary
+    }
+}
+
+pub fn get_version_number() -> i32 {
+    todo!() // wrenGetVersionNumber
 }
