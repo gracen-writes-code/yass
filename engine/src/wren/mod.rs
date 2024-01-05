@@ -111,21 +111,49 @@ impl VM {
         todo!() // wrenGetSlotType
     }
 
-    pub fn get_slot_bool(&self, slot: i32) -> Result<bool, GetSlotError> {
+    pub fn get_slot_bool(&self, slot: i32) -> bool {
         todo!() // wrenGetSlotBool
     }
 
-    pub fn get_slot_bytes(&self, slot: i32) -> Result<(&[u8], usize), GetSlotError> {
+    pub fn get_slot_bytes(&self, slot: i32) -> (&[u8], usize) {
         todo!() // wrenGetSlotBytes
     }
 
-    pub fn get_slot_double(&self, slot: i32) -> Result<f64, GetSlotError> {
+    pub fn get_slot_double(&self, slot: i32) -> f64 {
         todo!() // wrenGetSlotDouble
     }
 
     // TODO figure out how to implement wrenGetSlotForeign without void*
 
-    // TODO add stubs for everything past wrenGetSlotForeign
+    pub fn get_slot_string(&self, slot: i32) -> &[u8] {
+        todo!() // wrenGetSlotString
+    }
+
+    pub fn get_slot_handle(&self, slot: i32) -> &Handle {
+        todo!() // wrenGetSlotHandle
+    }
+
+    pub fn set_slot_bool(&self, slot: i32, value: bool) {
+        todo!() // wrenSetSlotBool
+    }
+
+    pub fn set_slot_bytes(&self, slot: i32, bytes: &[u8], length: usize) {
+        todo!() // wrenSetSlotBytes
+    }
+
+    pub fn set_slot_double(&self, slot: i32, value: f64) {
+        todo!() // wrenSetSlotDouble
+    }
+
+    // TODO figure out how to implement wrenSetSlotNewForeign without void*
+
+    pub fn set_slot_new_list(&self, slot: i32) {
+        todo!() // wrenSetSlotNewList
+    }
+
+    pub fn set_slot_new_map(&self, slot: i32) {
+        todo!() // wrenSetSlotNewMap
+    }
 }
 
 impl Drop for VM {

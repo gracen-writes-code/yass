@@ -1,0 +1,32 @@
+yass/ (root dir of yass dist)
+|- bin/ (binary files)
+   |- engine (engine executable)
+   |- launcher (launcher executable)
+|- data/ (contains all data that the engine loads)
+   |- modules/ (module pool, contains all the modules that the engine can load)
+      |- module_1/
+         |- main.wren (wren file called when loading the module)
+      |- module_2/
+         |- ...
+      |- module_3/
+         |- ...
+   |- profiles/ (contains launcher profiles that define how the engine loads the game)
+      |- profile_1/ (this dir may contain more in the future, for now it just has the root config)
+         |- profile.yml (root config for the profile)
+      |- profile_2/
+         |- ...
+      |- profile_3/
+         |- ...
+   |- instances.yml (contains data for the instances [only what profile they use for now
+                     basically just specifies the command line args for engine])
+|- runtime/ (runtime data for the instances [logs, world data, etc]
+             everything in this directory is not api-accessible and
+             is subject to breaking changes)
+   |- instance_1/
+      |- [contents of this dir defined by engine, subject to breaking changes]
+   |- instance_2/
+      |- ...
+   |- instance_3/
+      |- ...
+|- launcher.sh (script to run the launcher)
+|- launcher.yml (launcher config)
