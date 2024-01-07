@@ -26,7 +26,8 @@ def move_debug_bin(c: Context):
 
 @task(build, move_debug_bin)
 def debug(c: Context):
-    c.run("./engine.dbg game run", pty=True)
+    c.run("./engine.dbg debug_profile base_modules", pty=True)
+
 
 @task
 def release(c: Context):

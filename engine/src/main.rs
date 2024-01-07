@@ -1,7 +1,8 @@
 mod game;
 mod graphics;
-mod wren;
 
+use clap::Parser;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time;
 use winit::{
@@ -10,7 +11,10 @@ use winit::{
     window::WindowBuilder,
 };
 
-use crate::graphics::{vulkan::VulkanGraphicsInterface, GraphicsInterface, Renderable, Vertex};
+use crate::{
+    game::{Game, Profile},
+    graphics::{vulkan::VulkanGraphicsInterface, GraphicsInterface, Renderable, Vertex},
+};
 
 #[derive(Clone)]
 struct StaticVertex {
@@ -77,7 +81,9 @@ fn main_graphics() {
             window_id,
             event: window_event,
         } if window_id == window.id() => match window_event {
-            WindowEvent::CloseRequested => *control_flow = ControlFlow::Exit,
+            WindowEvent::CloseRequested => {
+                *control_flow = ControlFlow::Exit;
+            }
             WindowEvent::Resized(new_size) => {
                 graphics_interface.on_resized(new_size);
             }
@@ -89,7 +95,7 @@ fn main_graphics() {
             graphics_interface.render(graphics::Camera {
                 theta_x: 0.0,
                 theta_y: rotation.to_radians(),
-                fov: 70.0f32.to_radians(),
+                fov: (70.0f32).to_radians(),
                 near_cutoff: 0.01,
                 far_cutoff: 100.0,
                 eye: cgmath::point3(0.0, 0.0, 0.0),
@@ -102,51 +108,17 @@ fn main_graphics() {
     });
 }
 
+#[derive(Parser, Debug)]
+#[command(author, version, about, long_about = None)]
+struct Args {
+    profile_dir: PathBuf,
+    modules_dir: PathBuf,
+}
+
 fn main() {
-    let write_fn = |_vm: &wren::VM, text: &str| {
-        print!("{}", text);
-    };
+    let args = Args::parse();
 
-    let error_fn =
-        |_vm: &wren::VM, error_type: wren::ErrorType, module: &str, line: i32, msg: &str| {
-            match error_type {
-                wren::ErrorType::WrenErrorCompile => {
-                    println!("[{module} line {line}] [Error] {msg}");
-                }
-                wren::ErrorType::WrenErrorStackTrace => {
-                    println!("[{module} line {line}] in {msg}");
-                }
-                wren::ErrorType::WrenErrorRuntime => {
-                    println!("[Runtime Error] {msg}");
-                }
-            }
-        };
+    let profile = Profile::load(args.profile_dir);
 
-    let config = wren::Configuration {
-        write_fn: Some(write_fn),
-        error_fn: Some(error_fn),
-        ..Default::default()
-    };
-
-    let vm = wren::VM::new(&config);
-
-    let module = "main";
-    let script = "System.print(\"I am running in a VM!\")";
-    let result = vm.interpret(Some(module.as_bytes()), script.as_bytes());
-
-    match result {
-        Ok(()) => {
-            println!("Success!");
-        }
-        Err(e) => match e {
-            wren::InterpretError::CompileError => {
-                println!("Compile Error!");
-            }
-            wren::InterpretError::RuntimeError => {
-                println!("Runtime Error!");
-            }
-        },
-    };
-
-    drop(vm);
+    let game = Game::new(profile, args.modules_dir);
 }
