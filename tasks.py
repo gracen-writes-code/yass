@@ -32,4 +32,4 @@ def debug(c: Context):
 @task
 def release(c: Context):
     with c.cd("engine"):
-        engine.build(c, "release")
+        engine.release(c)

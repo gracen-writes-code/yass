@@ -8,3 +8,7 @@ def build(c: Context, profile="dev"):
 @task
 def clean(c: Context):
     c.run("cargo clean")
+    
+@task
+def release(c: Context):
+    
