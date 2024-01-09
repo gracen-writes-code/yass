@@ -1,0 +1,13 @@
+@default:
+    just --list
+
+build profile="dev":
+    cargo build --profile {{profile}}
+
+clean:
+    cargo clean
+
+release-for target:
+    cargo build -r --target {{target}}
+
+release: (release-for "x86_64-pc-windows-gnu") (release-for "x86_64-unknown-linux-gnu")

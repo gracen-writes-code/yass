@@ -7,10 +7,22 @@ struct ModuleReq {
     version_req: VersionReq,
 }
 
+impl ModuleReq {
+    fn parse(string: String) -> Self {
+        todo!()
+    }
+}
+
 struct Module {
     name: String,
     version: Version,
     dependencies: Vec<ModuleReq>,
+}
+
+impl Module {
+    fn load(dir: PathBuf) -> Self {
+        todo!()
+    }
 }
 
 pub struct Profile {
@@ -24,13 +36,13 @@ impl Profile {
         let mut yaml_str = String::new();
         yaml_file.read_to_string(&mut yaml_str).unwrap();
 
-        let yaml = YamlLoader::load_from_str(&yaml_str).unwrap()[0];
+        let yaml = &YamlLoader::load_from_str(&yaml_str).unwrap()[0];
 
         let name = match yaml["name"] {
             Yaml::String(ref s) => s.clone(),
             _ => panic!("invalid name"),
         };
-        let modules = match yaml["modules"] {
+        let modules = match &yaml["modules"] {
             Yaml::Array(arr) => arr
                 .into_iter()
                 .map(|module| match module {
@@ -39,7 +51,10 @@ impl Profile {
                 })
                 .collect::<Vec<String>>(),
             _ => panic!("invalid module list"),
-        }; // TODO parse module reqs
+        }
+        .into_iter()
+        .map(|s| ModuleReq::parse(s))
+        .collect();
 
         Self { name, modules }
     }
@@ -53,10 +68,12 @@ pub struct Game {
 
 impl Game {
     pub fn new(profile: Profile, modules_dir: PathBuf) -> Self {
-        let module_paths: Vec<Module> = fs::read_dir(modules_dir)
+        let module_pool = fs::read_dir(modules_dir)
             .unwrap()
-            .map()
-            .;
+            .filter_map(|res| res.ok())
+            .filter(|entry| entry.file_type().unwrap().is_dir())
+            .map(|entry| Module::load(entry.path()))
+            .collect();
 
         Self {
             profile,
