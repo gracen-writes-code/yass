@@ -1,6 +1,6 @@
 pub mod vulkan;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use winit::{dpi::PhysicalSize, event_loop::EventLoop, window::Window};
 
 pub struct Camera {
@@ -29,7 +29,7 @@ pub trait Renderable<V: Vertex> {
 }
 
 pub trait GraphicsInterface {
-    fn new(event_loop: &EventLoop<()>, window: Arc<Window>, texture: image::DynamicImage) -> Self;
+    fn new(event_loop: EventLoop<()>, window: Window, texture: image::DynamicImage) -> Self;
 
     fn add_renderable<V: Vertex>(&mut self, renderable: impl Renderable<V> + Send) -> usize;
     fn rm_renderable(&mut self, id: usize);
@@ -37,4 +37,16 @@ pub trait GraphicsInterface {
     fn render(&mut self, camera: Camera);
 
     fn on_resized(&mut self, new_size: PhysicalSize<u32>);
+
+    fn event_loop()
+}
+
+pub struct GraphicsLoop<I: GraphicsInterface> {
+    interface: I
+}
+
+impl GraphicsLoop {
+    fn new(interface: dyn GraphicsInterface) -> Self {
+        todo!()
+    }
 }

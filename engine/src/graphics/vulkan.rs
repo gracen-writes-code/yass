@@ -99,8 +99,8 @@ pub struct VulkanGraphicsInterface {
 
 impl GraphicsInterface for VulkanGraphicsInterface {
     fn new(
-        event_loop: &EventLoop<()>,
-        window: Arc<Window>,
+        event_loop: EventLoop<()>,
+        window: Window,
         texture_image: image::DynamicImage,
     ) -> Self {
         let library = VulkanLibrary::new().unwrap();

@@ -48,13 +48,15 @@ impl Renderable<StaticVertex> for Triangle {
 
 fn main_graphics() {
     let event_loop = EventLoop::new();
-    let window = Arc::new(WindowBuilder::new().build(&event_loop).unwrap());
+    let window = WindowBuilder::new().build(&event_loop).unwrap();
 
     let mut graphics_interface = VulkanGraphicsInterface::new(
-        &event_loop,
-        window.clone(),
+        event_loop,
+        window,
         image::open("texture.png").unwrap(),
     );
+
+    let graphics_loop = GraphicsLoop::new(graphics_interface);
 
     graphics_interface.add_renderable(Triangle {
         vertices: [

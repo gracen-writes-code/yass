@@ -13,14 +13,24 @@ impl ModuleReq {
     }
 }
 
-struct Module {
+struct PreloadModule {
     name: String,
     version: Version,
     dependencies: Vec<ModuleReq>,
+
+    dir: PathBuf,
 }
 
+impl PreloadModule {
+    fn new(dir: PathBuf) -> Self {
+        todo!()
+    }
+}
+
+struct Module {}
+
 impl Module {
-    fn load(dir: PathBuf) -> Self {
+    fn load(preload: PreloadModule) -> Self {
         todo!()
     }
 }
@@ -63,7 +73,7 @@ impl Profile {
 pub struct Game {
     pub profile: Profile,
 
-    module_pool: Vec<Module>,
+    module_pool: Vec<PreloadModule>,
 }
 
 impl Game {
@@ -72,7 +82,7 @@ impl Game {
             .unwrap()
             .filter_map(|res| res.ok())
             .filter(|entry| entry.file_type().unwrap().is_dir())
-            .map(|entry| Module::load(entry.path()))
+            .map(|entry| PreloadModule::new(entry.path()))
             .collect();
 
         Self {
